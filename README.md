@@ -1,9 +1,8 @@
 [![Downloads@latest](https://img.shields.io/github/downloads/Axlirr/cinestream/latest/total?style=for-the-badge)](https://github.com/Axlirr/cinestream/releases/latest/)
 [![Release Version Badge](https://img.shields.io/github/v/release/Axlirr/cinestream?style=for-the-badge)](https://github.com/Axlirr/cinestream/releases)
 
-# CineStream
+<img src="public/logo.png" width="150" alt="Logo"> # CineStream
 A cross-platform Electron Desktop App to stream and download any Movie, TV Series or Anime in the World. Zero Ads and Tracking <br></br>
-<img src="public/logo.png" width="150" alt="Logo">
 
 ## 🙏 Credits & Acknowledgements
 **CineStream** is a hard-fork and continuation of the original **[Streambert](https://github.com/truelockmc/streambert)** project created by **[truelockmc](https://github.com/truelockmc)**. Full credit goes to the original author for the incredible foundation. 
