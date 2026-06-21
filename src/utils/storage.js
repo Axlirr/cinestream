@@ -41,6 +41,7 @@ export const STORAGE_KEYS = {
   HISTORY: "history",
   SAVED: "saved",
   SAVED_ORDER: "savedOrder",
+  METADATA_OVERRIDES: "metadataOverrides",
   LOCAL_FILES: "localFiles",
   DOWNLOAD_PATH: "downloadPath",
   DOWNLOADER_FOLDER: "downloaderFolder",

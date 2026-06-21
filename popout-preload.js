@@ -72,11 +72,11 @@ function makeTitlebarBtn(iconHtml, hoverBg, title, onClick) {
 // ---------------------------------------------------------------------------
 
 function injectTitlebar() {
-  if (document.getElementById("__streambert_titlebar__")) return;
+  if (document.getElementById("__CINESTREAM_titlebar__")) return;
 
   // -- Bar -------------------------------------------------------------------
   const bar = document.createElement("div");
-  bar.id = "__streambert_titlebar__";
+  bar.id = "__CINESTREAM_titlebar__";
   css(bar, {
     position: "fixed",
     top: "0",
@@ -111,7 +111,7 @@ function injectTitlebar() {
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
   });
-  label.textContent = "STREAMBERT";
+  label.textContent = "CINESTREAM";
   bar.appendChild(label);
 
   // -- Buttons ---------------------------------------------------------------
@@ -181,7 +181,7 @@ function injectTitlebar() {
   // cursor enters from outside the window. A fixed transparent strip with a
   // higher stacking context than the iframes catches the entry properly.
   const sensor = document.createElement("div");
-  sensor.id = "__streambert_sensor__";
+  sensor.id = "__CINESTREAM_sensor__";
   css(sensor, {
     position: "fixed",
     top: "0",
@@ -248,3 +248,4 @@ history.replaceState = (...a) => {
   _onNav();
 };
 window.addEventListener("popstate", _onNav);
+

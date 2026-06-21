@@ -11,7 +11,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import WindowTitlebar from "./components/WindowTitlebar";
 import { storage, secureStorage, STORAGE_KEYS } from "./utils/storage";
-import { applyAccentColor } from "./utils/appearance";
+import { applyAccentColor, applyTheme } from "./utils/appearance";
 import { collectBackupData } from "./utils/backup";
 import { tmdbFetch, setApiErrorHandlers } from "./utils/api";
 import { clearAppCaches } from "./utils/storage";
@@ -21,11 +21,13 @@ import SearchModal from "./components/SearchModal";
 import SetupScreen from "./components/SetupScreen";
 import CloseConfirmModal from "./components/CloseConfirmModal";
 import UpdateModal from "./components/UpdateModal";
+import MetadataOverrideModal from "./components/MetadataOverrideModal";
 
 // Lazy-loaded pages: each chunk is only downloaded when the user first visits
 const HomePage = lazy(() => import("./pages/HomePage"));
 const MoviePage = lazy(() => import("./pages/MoviePage"));
 const TVPage = lazy(() => import("./pages/TVPage"));
+const ActorPage = lazy(() => import("./pages/ActorPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
@@ -51,6 +53,7 @@ export default function App() {
   const [navStack, setNavStack] = useState([]);
 
   const [saved, setSaved] = useState(() => storage.get("saved") || {});
+  const [folders, setFolders] = useState(() => storage.get("folders") || [{ id: "default", name: "Watchlist" }]);
   // Separate order array for drag-and-drop reordering
   const [savedOrder, setSavedOrder] = useState(
     () => storage.get("savedOrder") || null,
@@ -64,6 +67,7 @@ export default function App() {
   // null | "checking" | { entries: object[] } | "none"
   const [episodeCheckStatus, setEpisodeCheckStatus] = useState(null);
   const episodeDismissTimerRef = useRef(null);
+  const [editingMetadataItem, setEditingMetadataItem] = useState(null);
 
   const [trending, setTrending] = useState([]);
   const [trendingTV, setTrendingTV] = useState([]);
@@ -521,7 +525,9 @@ export default function App() {
       window.removeEventListener("streambert:tmdb-lang-changed", handler);
   }, [fetchTrending]);
   useEffect(() => {
-    // Accent colour
+    // Theme & Accent colour
+    const theme = storage.get("theme") || "default";
+    applyTheme(theme);
     const accent = storage.get(STORAGE_KEYS.ACCENT_COLOR) || "red";
     applyAccentColor(accent);
     // Font size
@@ -638,7 +644,11 @@ export default function App() {
 
   const handleSelectResult = useCallback(
     (item) => {
-      navigate(item.media_type === "tv" ? "tv" : "movie", item);
+      if (item.media_type === "person") {
+        navigate("actor", item);
+      } else {
+        navigate(item.media_type === "tv" ? "tv" : "movie", item);
+      }
     },
     [navigate],
   );
@@ -661,17 +671,36 @@ export default function App() {
     savedRef.current = saved;
   }, [saved]);
 
-  const toggleSave = useCallback(
-    (item) => {
+  const toggleFolderItem = useCallback(
+    (item, folderId) => {
       const mt = getMediaType(item);
       const id = `${mt}_${item.id}`;
       const currentSaved = savedRef.current;
-      const isRemoving = !!currentSaved[id];
       const next = { ...currentSaved };
 
-      if (isRemoving) {
+      const itemData = next[id] || {
+        id: item.id,
+        title: item.title || item.name,
+        poster_path: item.poster_path,
+        media_type: mt,
+        vote_average: item.vote_average,
+        year: (item.release_date || item.first_air_date || "").slice(0, 4),
+        folderIds: []
+      };
+
+      // Migrate older saves
+      if (!itemData.folderIds) itemData.folderIds = ["default"];
+
+      const folderSet = new Set(itemData.folderIds);
+      if (folderSet.has(folderId)) {
+        folderSet.delete(folderId);
+      } else {
+        folderSet.add(folderId);
+      }
+
+      if (folderSet.size === 0) {
         delete next[id];
-        showToast("Removed from watchlist");
+        showToast("Removed from all folders");
         setSavedOrder((prev) => {
           const currentOrder = prev || Object.keys(currentSaved);
           const newOrder = currentOrder.filter((k) => k !== id);
@@ -679,27 +708,32 @@ export default function App() {
           return newOrder;
         });
       } else {
-        next[id] = {
-          id: item.id,
-          title: item.title || item.name,
-          poster_path: item.poster_path,
-          media_type: mt,
-          vote_average: item.vote_average,
-          year: (item.release_date || item.first_air_date || "").slice(0, 4),
-        };
-        showToast("Added to watchlist");
-        setSavedOrder((prev) => {
-          const currentOrder = prev || Object.keys(currentSaved);
-          const newOrder = [...currentOrder, id];
-          storage.set("savedOrder", newOrder);
-          return newOrder;
-        });
+        itemData.folderIds = Array.from(folderSet);
+        next[id] = itemData;
+        if (!currentSaved[id]) {
+          showToast("Added to folder");
+          setSavedOrder((prev) => {
+            const currentOrder = prev || Object.keys(currentSaved);
+            const newOrder = [...currentOrder, id];
+            storage.set("savedOrder", newOrder);
+            return newOrder;
+          });
+        }
       }
+
       setSaved(next);
       storage.set("saved", next);
     },
     [showToast, getMediaType],
   );
+
+  const createFolder = useCallback((name) => {
+    setFolders((prev) => {
+      const next = [...prev, { id: "folder_" + Date.now(), name }];
+      storage.set("folders", next);
+      return next;
+    });
+  }, []);
 
   const isSaved = useCallback(
     (item) => {
@@ -847,7 +881,7 @@ export default function App() {
           savedList={savedList}
           activeDownloads={activeDownloadCount}
           onReorderSaved={handleReorderSaved}
-          onRemoveSaved={toggleSave}
+          onRemoveSaved={toggleFolderItem}
           canGoBack={navStack.length > 0}
           onBack={navigateBack}
           onShowShortcuts={() => setShowShortcuts(true)}
@@ -918,7 +952,10 @@ export default function App() {
               <MoviePage
                 item={selected}
                 apiKey={apiKey}
-                onSave={() => toggleSave(selected)}
+                saved={saved}
+                folders={folders}
+                onToggleFolderItem={toggleFolderItem}
+                onCreateFolder={createFolder}
                 isSaved={isSaved(selected)}
                 onHistory={addHistory}
                 progress={progress}
@@ -933,6 +970,15 @@ export default function App() {
                 onMarkUnwatched={markUnwatched}
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
+                onSelect={handleSelectResult}
+                onEditMetadata={(item) => setEditingMetadataItem(item)}
+              />
+            )}
+            {page === "actor" && selected && (
+              <ActorPage
+                personId={selected.id}
+                apiKey={apiKey}
+                onBack={() => navigate("home")}
                 onSelect={handleSelectResult}
               />
             )}
@@ -940,7 +986,10 @@ export default function App() {
               <TVPage
                 item={selected}
                 apiKey={apiKey}
-                onSave={() => toggleSave(selected)}
+                saved={saved}
+                folders={folders}
+                onToggleFolderItem={toggleFolderItem}
+                onCreateFolder={createFolder}
                 isSaved={isSaved(selected)}
                 onHistory={addHistory}
                 progress={progress}
@@ -955,6 +1004,7 @@ export default function App() {
                 onMarkUnwatched={markUnwatched}
                 downloads={downloads}
                 onGoToDownloads={handleGoToDownloads}
+                onEditMetadata={(item) => setEditingMetadataItem(item)}
               />
             )}
             {page === "history" && (
@@ -962,11 +1012,13 @@ export default function App() {
                 history={history}
                 inProgress={inProgress}
                 saved={savedList}
+                folders={folders}
                 progress={progress}
                 onSelect={handleSelectResult}
                 watched={watched}
                 onMarkWatched={markWatched}
                 onMarkUnwatched={markUnwatched}
+                onEditMetadata={(item) => setEditingMetadataItem(item)}
               />
             )}
             {page === "settings" && (
@@ -1275,6 +1327,17 @@ export default function App() {
         )}
         {showShortcuts && (
           <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />
+        )}
+        {editingMetadataItem && (
+          <MetadataOverrideModal
+            item={editingMetadataItem}
+            mediaType={editingMetadataItem.media_type}
+            onClose={() => setEditingMetadataItem(null)}
+            onSave={() => {
+              setEditingMetadataItem(null);
+              window.dispatchEvent(new CustomEvent("streambert:metadata-overrides-changed"));
+            }}
+          />
         )}
       </div>
     </ErrorBoundary>

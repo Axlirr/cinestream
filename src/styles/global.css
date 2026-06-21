@@ -52,10 +52,14 @@
     --surface2: #1a1a1a;
     --surface3: #222222;
     --border: #2a2a2a;
-    --red: #e50914;
-    --red2: #ff1a24;
-    --red-dim: rgba(229, 9, 20, 0.15);
-    --red-glow: 0 0 30px rgba(229, 9, 20, 0.3);
+    /* --red: #e50914; */
+  /* --red2: #ff1a24; */
+  /* --red-dim: rgba(229, 9, 20, 0.15); */
+  /* --red-glow: 0 0 30px rgba(229, 9, 20, 0.3); */
+  --red: #06b6d4;
+  --red2: #22d3ee;
+  --red-dim: rgba(6, 182, 212, 0.15);
+  --red-glow: 0 0 30px rgba(6, 182, 212, 0.3);
     --gold: #c8a84b;
     --text: #f0f0f0;
     --text2: #c0c0c0;
@@ -64,6 +68,44 @@
     --radius: 8px;
     --font-display: "Bebas Neue", sans-serif;
     --font-body: "DM Sans", sans-serif;
+}
+
+/* ── Themes ──────────────────────────────────────────────────────────────── */
+/* OLED / Pitch Black */
+html[data-theme="oled"] {
+    --bg: #000000;
+    --surface: #000000;
+    --surface2: #0a0a0a;
+    --surface3: #111111;
+    --border: #1a1a1a;
+}
+
+/* Dracula */
+html[data-theme="dracula"] {
+    --bg: #282a36;
+    --surface: #383a59;
+    --surface2: #44475a;
+    --surface3: #6272a4;
+    --border: #6272a4;
+    --text: #f8f8f2;
+    --text2: #e2e2dc;
+    --text3: #bfbfb9;
+}
+
+/* Nord */
+html[data-theme="nord"] {
+    --bg: #2e3440;
+    --surface: #3b4252;
+    --surface2: #434c5e;
+    --surface3: #4c566a;
+    --border: #4c566a;
+    --text: #eceff4;
+    --text2: #e5e9f0;
+    --text3: #d8dee9;
+}
+
+/* Default / Dark (Fallback) */
+html[data-theme="default"] {
 }
 
 html,

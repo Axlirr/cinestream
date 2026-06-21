@@ -8,7 +8,7 @@ import {
   clearAppCaches,
 } from "../utils/storage";
 import { clearTmdbCache } from "../utils/api";
-import { ACCENT_PRESETS, applyAccentColor } from "../utils/appearance";
+import { ACCENT_PRESETS, applyAccentColor, THEME_PRESETS, applyTheme } from "../utils/appearance";
 import { SUBTITLE_LANGUAGES } from "../utils/subtitles";
 import { DEFAULT_INVIDIOUS_BASE } from "../components/TrailerModal";
 import { RATING_COUNTRIES } from "../utils/ageRating";
@@ -216,7 +216,7 @@ function ResetConfirmDialog({ onConfirm, onCancel }) {
             marginBottom: 10,
           }}
         >
-          RESET STREAMBERT?
+          RESET CINESTREAM?
         </div>
         <div
           style={{
@@ -1073,6 +1073,133 @@ function ScheduledBackupSection() {
 }
 
 // ── Backup & Restore ─────────────────────────────────────────────────────────
+// ── Trakt Integration Section ───────────────────────────────────────────────────
+function TraktSection() {
+  const [config, setConfig] = useState({ clientId: "", clientSecret: "", hasToken: false });
+  const [authStatus, setAuthStatus] = useState("");
+  const [authCode, setAuthCode] = useState(null);
+  const [authUrl, setAuthUrl] = useState(null);
+  const [syncStatus, setSyncStatus] = useState("");
+
+  useEffect(() => {
+    window.electron.traktGetConfig().then((c) => setConfig(c || {}));
+    
+    const handler = window.electron.onTraktAuthSuccess(() => {
+      setAuthCode(null);
+      setAuthUrl(null);
+      setAuthStatus("Successfully authenticated!");
+      window.electron.traktGetConfig().then((c) => setConfig(c || {}));
+    });
+    return () => window.electron.offTraktAuthSuccess(handler);
+  }, []);
+
+  const handleSaveCreds = async () => {
+    setAuthStatus("Saving...");
+    await window.electron.traktSetCredentials({ clientId: config.clientId, clientSecret: config.clientSecret });
+    setAuthStatus("Credentials saved!");
+    setTimeout(() => setAuthStatus(""), 2000);
+  };
+
+  const handleAuth = async () => {
+    setAuthStatus("Starting auth...");
+    const res = await window.electron.traktStartAuth();
+    if (!res.ok) {
+      setAuthStatus(res.error);
+      return;
+    }
+    setAuthCode(res.userCode);
+    setAuthUrl(res.verificationUrl);
+    setAuthStatus("Waiting for you to complete authentication...");
+  };
+
+  const handleSync = async () => {
+    setSyncStatus("Syncing...");
+    const watched = storage.get("watched") || {};
+    const res = await window.electron.traktSyncWatched({ watchedMap: watched });
+    if (!res.ok) {
+      setSyncStatus(res.error);
+    } else {
+      setSyncStatus("Successfully synced to Trakt!");
+      setTimeout(() => setSyncStatus(""), 3000);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <div className="settings-section-title">Trakt.tv Integration</div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 12, lineHeight: 1.6 }}>
+          Sync your watched history with Trakt.tv. You will need to create an API app on Trakt and provide your Client ID and Client Secret.
+        </div>
+        
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 400 }}>
+          <input
+            type="text"
+            className="text-input"
+            placeholder="Trakt Client ID"
+            value={config.clientId || ""}
+            onChange={(e) => setConfig({ ...config, clientId: e.target.value })}
+          />
+          <input
+            type="text"
+            className="text-input"
+            placeholder="Trakt Client Secret"
+            value={config.clientSecret || ""}
+            onChange={(e) => setConfig({ ...config, clientSecret: e.target.value })}
+          />
+          <div style={{ display: "flex", gap: 12 }}>
+            <button className="btn btn-primary" onClick={handleSaveCreds}>Save Credentials</button>
+            {config.clientId && (
+              <button className="btn btn-ghost" onClick={handleAuth}>
+                {config.hasToken ? "Re-Authenticate" : "Authenticate"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {authStatus && (
+          <div style={{ marginTop: 12, fontSize: 13, color: "var(--text2)" }}>
+            {authStatus}
+          </div>
+        )}
+
+        {authCode && (
+          <div style={{ marginTop: 16, padding: 16, background: "var(--surface2)", borderRadius: 8 }}>
+            <div style={{ fontSize: 14, marginBottom: 8 }}>Please go to:</div>
+            <div style={{ marginBottom: 12 }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => window.electron.openExternal(authUrl)}
+                style={{ padding: 0, color: "var(--primary)" }}
+              >
+                {authUrl}
+              </button>
+            </div>
+            <div style={{ fontSize: 14, marginBottom: 4 }}>And enter the code:</div>
+            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: 2 }}>{authCode}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ height: 1, background: "var(--border)", margin: "24px 0" }} />
+
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Manual Sync</div>
+        <div style={{ fontSize: 13, color: "var(--text3)", marginBottom: 12, lineHeight: 1.6 }}>
+          Push your local watched history to your Trakt profile.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn" onClick={handleSync} disabled={!config.hasToken}>
+            Sync to Trakt
+          </button>
+          {syncStatus && <span style={{ fontSize: 13, color: "var(--text2)" }}>{syncStatus}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BackupRestoreSection({ onRestored }) {
   const [restoreStatus, setRestoreStatus] = useState(null);
 
@@ -1088,7 +1215,7 @@ function BackupRestoreSection({ onRestored }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `streambert-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `CINESTREAM-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1195,6 +1322,9 @@ function AppearanceSection() {
   const [accent, setAccent] = useState(
     () => storage.get(STORAGE_KEYS.ACCENT_COLOR) || "red",
   );
+  const [theme, setTheme] = useState(
+    () => storage.get("theme") || "default",
+  );
   const [fontSize, setFontSize] = useState(
     () => storage.get(STORAGE_KEYS.FONT_SIZE) || "normal",
   );
@@ -1208,10 +1338,12 @@ function AppearanceSection() {
 
   const handleSave = () => {
     storage.set(STORAGE_KEYS.ACCENT_COLOR, accent);
+    storage.set("theme", theme);
     storage.set(STORAGE_KEYS.FONT_SIZE, fontSize);
     storage.set(STORAGE_KEYS.COMPACT_MODE, compact ? 1 : 0);
     storage.set(STORAGE_KEYS.REDUCE_ANIMATIONS, noAnim ? 1 : 0);
     // Apply immediately
+    applyTheme(theme);
     applyAccentColor(accent);
     const zoomMap = { sm: 0.85, normal: 1, lg: 1.15 };
     if (window.electron?.setZoomFactor)
@@ -1225,6 +1357,37 @@ function AppearanceSection() {
   return (
     <div style={{ marginBottom: 40 }}>
       <div className="settings-section-title">Appearance</div>
+
+      {/* Theme */}
+      <div style={{ marginBottom: 24 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text2)",
+            marginBottom: 10,
+          }}
+        >
+          App Theme
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {THEME_PRESETS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTheme(t.id)}
+              className={
+                theme === t.id ? "btn btn-primary" : "btn btn-ghost"
+              }
+              style={{ padding: "8px 16px" }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 8 }}>
+          Sets the main background and surface colors.
+        </div>
+      </div>
 
       {/* Accent Colour */}
       <div style={{ marginBottom: 24 }}>
@@ -1368,7 +1531,7 @@ function LibraryPrivacySection() {
     storage.set(STORAGE_KEYS.LIBRARY_SORT, sort);
     storage.set(STORAGE_KEYS.HISTORY_ENABLED, historyEnabled ? 1 : 0);
     window.dispatchEvent(
-      new CustomEvent("streambert:library-sort-changed", { detail: sort }),
+      new CustomEvent("CINESTREAM:library-sort-changed", { detail: sort }),
     );
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -1461,6 +1624,52 @@ function LibraryPrivacySection() {
   );
 }
 
+// ── Player Settings ───────────────────────────────────────────────────────────
+function PlayerSettingsSection() {
+  const [autoPlayNextEpisode, setAutoPlayNextEpisode] = useState(
+    () => storage.get("autoPlayNextEpisode") !== false // default true
+  );
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    storage.set("autoPlayNextEpisode", autoPlayNextEpisode);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <div className="settings-section-title">Video Player</div>
+      
+      {/* Auto-play Next Episode Toggle */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Toggle value={autoPlayNextEpisode} onChange={setAutoPlayNextEpisode} />
+          <div>
+            <div
+              style={{ fontSize: 14, fontWeight: 500, color: "var(--text)" }}
+            >
+              Auto-play next episode
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              When a TV episode finishes, automatically start playing the next one.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button className="btn btn-primary" onClick={handleSave}>
+          Save
+        </button>
+        {saved && (
+          <span style={{ fontSize: 13, color: "#48c774" }}>✓ Saved</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StartPageSection() {
   const [startPage, setStartPage] = useState(
     () => storage.get(STORAGE_KEYS.START_PAGE) || "home",
@@ -1484,7 +1693,7 @@ function StartPageSection() {
           lineHeight: 1.6,
         }}
       >
-        Choose which page opens when you launch Streambert.
+        Choose which page opens when you launch CINESTREAM.
       </div>
       <div
         style={{
@@ -1547,7 +1756,7 @@ function TmdbLanguageSection() {
     // Clear in-memory cache
     clearTmdbCache();
     // Notify App.jsx to re-fetch trending data immediately.
-    window.dispatchEvent(new CustomEvent("streambert:tmdb-lang-changed"));
+    window.dispatchEvent(new CustomEvent("CINESTREAM:tmdb-lang-changed"));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -3139,7 +3348,7 @@ export default function SettingsPage({
       {showDeleteDlConfirm && (
         <ConfirmDialog
           title="DELETE ALL DOWNLOADS?"
-          description="This will permanently delete all video files downloaded through Streambert and remove them from the download list."
+          description="This will permanently delete all video files downloaded through CINESTREAM and remove them from the download list."
           confirmLabel="Yes, Delete All"
           onConfirm={async () => {
             setShowDeleteDlConfirm(false);
@@ -3181,7 +3390,7 @@ export default function SettingsPage({
           SETTINGS
         </div>
         <div style={{ color: "var(--text3)", fontSize: 14, marginBottom: 48 }}>
-          App configuration for Streambert
+          App configuration for CINESTREAM
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
@@ -3634,7 +3843,7 @@ export default function SettingsPage({
               }}
             >
               Downloaded videos will be saved here. Make sure the folder exists
-              and Streambert has write access to it.
+              and CINESTREAM has write access to it.
             </div>
             <div
               style={{
@@ -3694,10 +3903,11 @@ export default function SettingsPage({
             subtitle="Home layout, start page, appearance, and display options"
           />
           <HomeLayoutSection />
-          <Divider />
-          <StartPageSection />
-          <Divider />
           <AppearanceSection />
+          <StartPageSection />
+          <LibraryPrivacySection />
+          <PlayerSettingsSection />
+          <TmdbLanguageSection />
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
@@ -3719,6 +3929,7 @@ export default function SettingsPage({
             title="Backup & Restore"
             subtitle="Export your data or restore from a previous backup file"
           />
+          <TraktSection />
           <BackupRestoreSection />
         </div>
 
@@ -3743,7 +3954,7 @@ export default function SettingsPage({
             <div style={{ padding: "22px 24px" }}>
               <CleanRow
                 title="Install Location"
-                description="Opens the folder where Streambert is installed."
+                description="Opens the folder where CINESTREAM is installed."
                 buttonLabel="Open Folder"
                 onAction={async () => {
                   const p = await window.electron?.getInstallPath?.();
@@ -3789,7 +4000,7 @@ export default function SettingsPage({
             <div style={{ padding: "22px 24px" }}>
               <CleanRow
                 title="Delete All Downloads"
-                description="Permanently deletes all video files that were downloaded through Streambert and removes them from the download list. Only files downloaded through the app will be deleted, nothing else in your folder is touched."
+                description="Permanently deletes all video files that were downloaded through CINESTREAM and removes them from the download list. Only files downloaded through the app will be deleted, nothing else in your folder is touched."
                 buttonLabel="Delete All"
                 onAction={() =>
                   new Promise((resolve) => {
@@ -3855,7 +4066,7 @@ export default function SettingsPage({
                       lineHeight: 1.6,
                     }}
                   >
-                    Completely resets Streambert to factory defaults, clears all
+                    Completely resets CINESTREAM to factory defaults, clears all
                     settings, API Token, saved library, watch history/progress,
                     and all cached data. Your downloaded video files will not be
                     touched.
@@ -3889,3 +4100,4 @@ export default function SettingsPage({
     </>
   );
 }
+

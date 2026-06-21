@@ -1,7 +1,7 @@
 // ── App Update Utilities ──────────────────────────────────────────────────────
 // Centralised update-check logic. Imported by both App.jsx and SettingsPage.jsx.
 
-export const GITHUB_REPO = "truelockmc/streambert";
+export const GITHUB_REPO = "Axlirr/cinestream";
 
 // Normalise "1.3" → "1.3.0" so semver comparison works correctly
 export function normaliseVersion(v) {
@@ -78,3 +78,4 @@ export async function checkForUpdates() {
     hasUpdate: latestRaw !== "" && semverGt(latestParts, currentParts),
   };
 }
+

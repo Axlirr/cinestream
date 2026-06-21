@@ -113,6 +113,13 @@ function register(getMainWindow, { writeSecretMigration }) {
     return mw ? mw.isMaximized() : false;
   });
 
+  ipcMain.handle("window-set-always-on-top", (_, isAlwaysOnTop) => {
+    const mw = getMainWindow();
+    if (mw && !mw.isDestroyed()) {
+      mw.setAlwaysOnTop(isAlwaysOnTop);
+    }
+  });
+
   // Push maximize state to the renderer so WindowTitlebar doesn't need to poll
   const pushMaximized = (v) => {
     const mw = getMainWindow();

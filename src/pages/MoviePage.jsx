@@ -37,13 +37,20 @@ import {
   SourceIcon,
   ShieldBlockIcon,
   PopOutIcon,
+  CastIcon,
+  PartyIcon,
 } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
+import PlaylistModal from "../components/PlaylistModal";
+import SubtitleSearchModal from "../components/SubtitleSearchModal";
+import CastModal from "../components/CastModal";
+import WatchPartyModal from "../components/WatchPartyModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
 import MediaCard from "../components/MediaCard";
-import { storage } from "../utils/storage";
+import { storage, clearAppCaches } from "../utils/storage";
+import { useMetadata } from "../utils/metadata";
 import {
   fetchMovieRating,
   isRestricted,
@@ -54,7 +61,10 @@ import {
 export default function MoviePage({
   item,
   apiKey,
-  onSave,
+  saved,
+  folders,
+  onToggleFolderItem,
+  onCreateFolder,
   isSaved,
   onHistory,
   progress,
@@ -68,12 +78,15 @@ export default function MoviePage({
   downloads,
   onGoToDownloads,
   onSelect,
+  onEditMetadata,
 }) {
   const [details, setDetails] = useState(null);
+  const [credits, setCredits] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [trailerKey, setTrailerKey] = useState(null);
   const [showTrailer, setShowTrailer] = useState(false);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [m3u8Url, setM3u8Url] = useState(null);
   const [interceptedSubs, setInterceptedSubs] = useState([]);
   const [playerSource, setPlayerSource] = useState(
@@ -88,6 +101,14 @@ export default function MoviePage({
     () => storage.get("allmangaDubMode") || "sub",
   );
   const [anilistData, setAnilistData] = useState(null);
+  const [closeConfirm, setCloseConfirm] = useState(false);
+
+  const [showSubtitleSearch, setShowSubtitleSearch] = useState(false);
+  const [showCastModal, setShowCastModal] = useState(false);
+  const [showPartyModal, setShowPartyModal] = useState(false);
+
+  // Focus trap ref
+  const focusTrapRef = useRef(null);
   const [menuPos, setMenuPos] = useState(null);
   const sourceRef = useRef(null);
   const playerWrapRef = useRef(null);
@@ -140,10 +161,12 @@ export default function MoviePage({
   const hasProgress = pct > 0;
 
   // ── Derived display values (must be declared before any callbacks that use them) ──
-  const d = details || item;
+  const unpatchedD = details || item;
+  const d = useMetadata(unpatchedD);
   const title = d.title || d.name;
   const year = (d.release_date || "").slice(0, 4);
   const mediaName = `${title}${year ? " (" + year + ")" : ""}`;
+  const isOverridePoster = d.overridePoster;
 
   const { watchedSecs, totalSecs, displayPct, progressLabel } = useMemo(() => {
     const watchedSecs = storage.get("dlTime_" + progressKey) || 0;
@@ -193,6 +216,12 @@ export default function MoviePage({
       .catch(() => {
         if (mounted) setDetails(item);
       });
+
+    tmdbFetch(`/movie/${item.id}/credits`, apiKey)
+      .then((c) => {
+        if (mounted && c.cast) setCredits(c.cast.filter((p) => p.profile_path));
+      })
+      .catch(() => {});
     return () => {
       mounted = false;
     };
@@ -394,6 +423,65 @@ export default function MoviePage({
   useEffect(() => {
     if (playing) setWebviewLoading(true);
   }, [playing]);
+
+  const toggleFullscreen = useCallback(() => {
+    setPlayerFullscreen((v) => !v);
+  }, []);
+
+  const injectSubtitle = useCallback((vttData, lang) => {
+    if (!webviewRef.current) return;
+    const code = `
+      (function() {
+        const video = document.querySelector('video');
+        if (!video) return false;
+        
+        // Remove existing tracks we injected
+        Array.from(video.querySelectorAll('track.streambert-track')).forEach(t => t.remove());
+        
+        const track = document.createElement('track');
+        track.className = 'streambert-track';
+        track.kind = 'captions';
+        track.label = '${lang || "Custom"}';
+        track.srclang = '${lang || "unknown"}';
+        track.src = 'data:text/vtt;charset=utf-8,' + encodeURIComponent(\`${vttData.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
+        track.default = true;
+        video.appendChild(track);
+        
+        // Try to enable it immediately
+        if (video.textTracks && video.textTracks.length > 0) {
+          for (let i = 0; i < video.textTracks.length; i++) {
+            if (video.textTracks[i].label === '${lang || "Custom"}') {
+              video.textTracks[i].mode = 'showing';
+            } else {
+              video.textTracks[i].mode = 'hidden';
+            }
+          }
+        }
+        return true;
+      })();
+    `;
+    webviewRef.current.executeJavaScript(code)
+      .then((success) => {
+        if (!success) {
+          console.warn("Could not find video element to inject subtitle");
+        }
+      })
+      .catch((err) => console.error("Error injecting subtitle:", err));
+  }, []);
+
+  // ── Discord RPC ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (playing) {
+      window.electron.updateDiscordPresence({
+        details: `Watching ${title}`,
+        state: "Movie",
+        startTimestamp: Date.now(),
+      });
+    } else {
+      window.electron.updateDiscordPresence(null);
+    }
+    return () => window.electron.updateDiscordPresence(null);
+  }, [playing, title]);
 
   // ── Webview memory cleanup ────────────────────────────────────────────────
   // useLayoutEffect fires synchronously BEFORE React mutates the DOM, so the
@@ -636,22 +724,19 @@ export default function MoviePage({
         <div className="detail-gradient" />
         <div className="detail-content">
           <div className="detail-poster" style={{ position: "relative" }}>
-            {d.poster_path ? (
-              <img src={imgUrl(d.poster_path)} alt={title} loading="lazy" />
-            ) : (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text3)",
-                }}
-              >
-                <FilmIcon />
-              </div>
-            )}
+            <img
+              src={isOverridePoster ? d.poster_path : imgUrl(d.poster_path, "w500")}
+              alt={title}
+              className="poster-img"
+              loading="lazy"
+              onError={(e) => {
+                if (!isOverridePoster) {
+                  e.target.src = imgUrl(d.poster_path, "w300");
+                } else {
+                  e.target.style.display = "none";
+                }
+              }}
+            />
             {isWatched && (
               <div className="detail-watched-badge">
                 <WatchedIcon size={36} />
@@ -750,8 +835,16 @@ export default function MoviePage({
                     <TrailerIcon /> Trailer
                   </button>
                 ))}
-              <button className="btn btn-secondary" onClick={onSave}>
-                {isSaved ? <BookmarkFillIcon /> : <BookmarkIcon />}
+              <button
+                className="btn btn-primary"
+                onClick={() => onToggleFolderItem(item, "default")}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setShowPlaylistModal(true);
+                }}
+                title="Click to toggle Watchlist, Right-click for more folders"
+              >
+                {isSaved ? <BookmarkFillIcon /> : <BookmarkIcon />}{" "}
                 {isSaved ? "Saved" : "Save"}
               </button>
               {!isUnreleased &&
@@ -787,6 +880,15 @@ export default function MoviePage({
               <button className="btn btn-ghost" onClick={onBack}>
                 <BackIcon /> Back
               </button>
+              {onEditMetadata && (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => onEditMetadata(unpatchedD)}
+                  title="Edit Metadata"
+                >
+                  ✎ Edit
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -970,6 +1072,35 @@ export default function MoviePage({
                   <span className="player-blocked-badge">{blockedSession}</span>
                 )}
               </button>
+              {/* Cast Button */}
+              {m3u8Url && (
+                <button
+                  className="player-overlay-btn"
+                  onClick={() => setShowCastModal(true)}
+                  title="Cast to TV"
+                >
+                  <CastIcon size={18} />
+                </button>
+              )}
+              {/* Watch Party Button */}
+              <button
+                className="player-overlay-btn"
+                onClick={() => setShowPartyModal(true)}
+                title="Watch Party"
+              >
+                <PartyIcon size={18} />
+              </button>
+              {/* Subtitles Search Button */}
+              <button
+                className="player-overlay-btn"
+                onClick={() => {
+                  setShowSourceMenu(false);
+                  setShowSubtitleSearch(true);
+                }}
+                title="Search Subtitles"
+              >
+                CC
+              </button>
               {/* Pop-out button*/}
               <button
                 className="player-overlay-btn"
@@ -1111,6 +1242,56 @@ export default function MoviePage({
         </div>
       )}
 
+
+      {credits && credits.length > 0 && onSelect && (
+        <div className="section">
+          <div className="section-title">Cast</div>
+          <div className="scroll-row">
+            {credits.slice(0, 15).map((person) => (
+              <div
+                key={person.id}
+                onClick={() => onSelect({ id: person.id, media_type: "person", name: person.name })}
+                style={{
+                  width: 120,
+                  flexShrink: 0,
+                  cursor: "pointer",
+                  background: "var(--surface2)",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: "1px solid var(--border)",
+                  transition: "transform 0.2s, border-color 0.2s"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-4px)";
+                  e.currentTarget.style.borderColor = "var(--red)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.borderColor = "var(--border)";
+                }}
+              >
+                <div style={{ width: 120, height: 180, overflow: "hidden" }}>
+                  <img
+                    src={imgUrl(person.profile_path, "w500")}
+                    alt={person.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    loading="lazy"
+                  />
+                </div>
+                <div style={{ padding: "8px 10px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {person.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {person.character}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {collection && onSelect && (
         <div className="section">
           <div className="section-title">{collection.name}</div>
@@ -1144,6 +1325,17 @@ export default function MoviePage({
         />
       )}
 
+      {showPlaylistModal && (
+        <PlaylistModal
+          item={item}
+          folders={folders}
+          saved={saved}
+          onClose={() => setShowPlaylistModal(false)}
+          onToggleItem={onToggleFolderItem}
+          onCreateFolder={onCreateFolder}
+        />
+      )}
+
       {showBlockedModal && (
         <BlockedStatsModal
           sessionDomains={getBlockedDomains()}
@@ -1167,6 +1359,33 @@ export default function MoviePage({
           mediaType="movie"
           posterPath={d.poster_path}
           tmdbId={item.id}
+        />
+      )}
+
+      {showSubtitleSearch && (
+        <SubtitleSearchModal
+          item={item}
+          season={null}
+          episode={null}
+          onClose={() => setShowSubtitleSearch(false)}
+          onInjectSubtitle={injectSubtitle}
+        />
+      )}
+
+      {showCastModal && (
+        <CastModal
+          onClose={() => setShowCastModal(false)}
+          mediaUrl={m3u8Url}
+          title={title}
+          posterPath={d.poster_path}
+        />
+      )}
+
+      {showPartyModal && (
+        <WatchPartyModal
+          onClose={() => setShowPartyModal(false)}
+          webviewRef={webviewRef}
+          title={title}
         />
       )}
     </div>

@@ -38,8 +38,32 @@ contextBridge.exposeInMainWorld("electron", {
   // Misc
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
+  updateDiscordPresence: (details) => ipcRenderer.invoke("update-discord-presence", details),
   openPath: (filePath) => ipcRenderer.invoke("open-path", filePath),
   getInstallPath: () => ipcRenderer.invoke("get-install-path"),
+  
+  // Cast
+  getCastDevices: () => ipcRenderer.invoke("get-cast-devices"),
+  castMedia: (data) => ipcRenderer.invoke("cast-media", data),
+  castStop: () => ipcRenderer.invoke("cast-stop"),
+  onCastDevicesUpdated: (cb) => {
+    const handler = (_, devices) => cb(devices);
+    ipcRenderer.on("cast-devices-updated", handler);
+    return handler;
+  },
+  offCastDevicesUpdated: (handler) => ipcRenderer.removeListener("cast-devices-updated", handler),
+
+  // Trakt
+  traktGetConfig: () => ipcRenderer.invoke("trakt-get-config"),
+  traktSetCredentials: (creds) => ipcRenderer.invoke("trakt-set-credentials", creds),
+  traktStartAuth: () => ipcRenderer.invoke("trakt-start-auth"),
+  traktSyncWatched: (data) => ipcRenderer.invoke("trakt-sync-watched", data),
+  onTraktAuthSuccess: (cb) => {
+    ipcRenderer.on("trakt-auth-success", cb);
+    return cb;
+  },
+  offTraktAuthSuccess: (cb) => ipcRenderer.removeListener("trakt-auth-success", cb),
+
   openPathAtTime: (filePath, seconds, subtitlePaths) =>
     ipcRenderer.invoke("open-path-at-time", {
       filePath,

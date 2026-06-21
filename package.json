@@ -1,10 +1,9 @@
 {
-  "name": "streambert",
-  "version": "2.4.0",
-  "description": "Streambert Desktop App",
+  "name": "cinestream",
+  "version": "1.0.0",
+  "description": "CineStream Desktop App",
   "author": {
-    "name": "truelockmc",
-    "email": "anonyson@proton.me"
+    "name": "Axlirr"
   },
   "license": "GPL-3.0",
   "main": "index.js",
@@ -21,6 +20,9 @@
     "dist:mac": "cross-env ELECTRON_DIST=1 vite build && electron-builder --mac --publish never"
   },
   "dependencies": {
+    "chromecast-api": "^0.4.2",
+    "discord-rpc": "^4.0.1",
+    "peerjs": "^1.5.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -33,8 +35,8 @@
     "vite": "^7.3.1"
   },
   "build": {
-    "appId": "com.truelockmc.streambert",
-    "productName": "Streambert",
+    "appId": "com.axlirr.cinestream",
+    "productName": "CineStream",
     "asar": true,
     "compression": "normal",
     "directories": {
@@ -81,12 +83,12 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "allowElevation": true,
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "Uninstall CineStream",
+      "installerSidebar": "public/installer-sidebar.bmp",
+      "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "selectPerMachineByDefault": false,
-      "license": "LICENSE",
-      "uninstallDisplayName": "Uninstall Streambert",
-      "installerSidebar": "public/installer-sidebar.bmp"
+      "artifactName": "CineStream Setup ${version}.${ext}"
     },
     "win": {
       "icon": "public/icon.png",
@@ -146,11 +148,11 @@
       "icon": "public/sized",
       "desktop": {
         "entry": {
-          "Name": "Streambert",
-          "Comment": "Streambert Desktop App",
+          "Name": "CineStream",
+          "Comment": "CineStream Desktop App",
           "Categories": "AudioVideo;Video;Player;Multimedia;Internet;",
-          "Icon": "streambert",
-          "StartupWMClass": "Streambert"
+          "Icon": "cinestream",
+          "StartupWMClass": "CineStream"
         }
       }
     },
@@ -163,3 +165,4 @@
     ]
   }
 }
+

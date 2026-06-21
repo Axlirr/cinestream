@@ -226,7 +226,7 @@ function register(getMainWindow) {
     ) => {
       try {
         const id = crypto.randomUUID();
-        const logPath = path.join(os.tmpdir(), `streambert_dl_${id}.log`);
+        const logPath = path.join(os.tmpdir(), `CINESTREAM_dl_${id}.log`);
 
         const entry = {
           id,
@@ -258,7 +258,7 @@ function register(getMainWindow) {
         try {
           fs.writeFileSync(
             logPath,
-            `Streambert Download Log\nName: ${name}\nURL: ${m3u8Url}\nStarted: ${new Date().toISOString()}\n${"─".repeat(60)}\n`,
+            `CINESTREAM Download Log\nName: ${name}\nURL: ${m3u8Url}\nStarted: ${new Date().toISOString()}\n${"─".repeat(60)}\n`,
             "utf8",
           );
         } catch {}
@@ -275,22 +275,69 @@ function register(getMainWindow) {
           String(d.episode ?? "") === String(entry.episode ?? "");
         downloads = downloads.filter((d) => !isSameMedia(d));
 
-        const args = [
-          "--cli",
-          m3u8Url,
-          "-f",
-          "mp4 (with Audio)",
-          "-r",
-          "best",
-          "-b",
-          "320",
-          "-n",
-          name,
-          "-d",
-          downloadPath,
-        ];
+        // ── Determine download method ──────────────────────────────────
+        // Try to use yt-dlp directly (installed via pip with curl-cffi)
+        // to bypass Cloudflare anti-bot. Fall back to the old wrapper.
+        const { execSync } = require("child_process");
+        let ytdlpPath = null;
+        try {
+          ytdlpPath = execSync("python -c \"import shutil; print(shutil.which('yt-dlp'))\"", { encoding: "utf8" }).trim();
+          if (!ytdlpPath || ytdlpPath === "None") ytdlpPath = null;
+        } catch {}
+        // Also check common locations
+        if (!ytdlpPath) {
+          const candidates = [
+            path.join(os.homedir(), "anaconda3", "Scripts", "yt-dlp.EXE"),
+            path.join(os.homedir(), "AppData", "Local", "Programs", "Python", "Python312", "Scripts", "yt-dlp.exe"),
+          ];
+          for (const c of candidates) {
+            if (fs.existsSync(c)) { ytdlpPath = c; break; }
+          }
+        }
 
-        const proc = spawn(binaryPath, args, {
+        const safeName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").replace(/\s+/g, " ").trim();
+        let finalBinary, args;
+
+        if (ytdlpPath) {
+          // ── Direct yt-dlp mode (with Cloudflare impersonation) ──
+          // The goldweather.net CDN checks Referer to verify requests come
+          // from the Videasy player embed page.
+          finalBinary = ytdlpPath;
+          const urlHost = (() => { try { return new URL(m3u8Url).hostname; } catch { return ""; } })();
+          const referer = urlHost.includes("goldweather")
+            ? "https://player.videasy.net/"
+            : urlHost.includes("vidsrc")
+              ? "https://vidsrc.to/"
+              : `https://${urlHost}/`;
+          args = [
+            m3u8Url,
+            "--impersonate", "chrome",
+            "--extractor-args", "generic:impersonate",
+            "--referer", referer,
+            "--add-header", `Origin:${referer.replace(/\/$/, "")}`,
+            "-f", "bv*+ba/b",
+            "--merge-output-format", "mp4",
+            "--audio-quality", "320K",
+            "-o", path.join(downloadPath, safeName + ".%(ext)s"),
+            "--no-part",
+            "--newline",
+            "--progress",
+          ];
+        } else {
+          // ── Fallback: old wrapper (may fail on Cloudflare) ──
+          finalBinary = binaryPath;
+          args = [
+            "--cli",
+            m3u8Url,
+            "-f", "mp4 (with Audio)",
+            "-r", "best",
+            "-b", "320",
+            "-n", name,
+            "-d", downloadPath,
+          ];
+        }
+
+        const proc = spawn(finalBinary, args, {
           stdio: ["ignore", "pipe", "pipe"],
         });
         activeProcs.set(id, proc);
@@ -957,3 +1004,4 @@ module.exports = {
   killAllDownloads,
   getDownloads: () => downloads,
 };
+

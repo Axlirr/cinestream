@@ -44,10 +44,16 @@ import {
   SourceIcon,
   ShieldBlockIcon,
   PopOutIcon,
+  CastIcon,
+  PartyIcon,
 } from "../components/Icons";
 import DownloadModal from "../components/DownloadModal";
 import TrailerModal from "../components/TrailerModal";
 import BlockedStatsModal from "../components/BlockedStatsModal";
+import PlaylistModal from "../components/PlaylistModal";
+import SubtitleSearchModal from "../components/SubtitleSearchModal";
+import CastModal from "../components/CastModal";
+import WatchPartyModal from "../components/WatchPartyModal";
 import { useBlockedStats } from "../utils/useBlockedStats";
 import { storage, STORAGE_KEYS } from "../utils/storage";
 import { fetchAniSkipTimings } from "../utils/aniSkip";
@@ -57,6 +63,7 @@ import {
   getAgeLimitSetting,
   getRatingCountry,
 } from "../utils/ageRating";
+import { useMetadata } from "../utils/metadata";
 
 // ── Partial-circle progress icon (cached per pct tier) ───────────────────────
 // Uses a single SVG arc. Three instances (25/50/75)
@@ -350,7 +357,10 @@ const INJECT_SKIP_CONTROLS = `
 export default function TVPage({
   item,
   apiKey,
-  onSave,
+  saved,
+  folders,
+  onToggleFolderItem,
+  onCreateFolder,
   isSaved,
   onHistory,
   progress,
@@ -363,8 +373,10 @@ export default function TVPage({
   onMarkUnwatched,
   downloads,
   onGoToDownloads,
+  onEditMetadata,
 }) {
   const [details, setDetails] = useState(null);
+  const [credits, setCredits] = useState(null);
   const [seasonData, setSeasonData] = useState(null);
   const [failedSeasons, setFailedSeasons] = useState(() => new Set()); // season numbers which give 404 on TMDB
   const [selectedSeason, setSelectedSeason] = useState(() =>
@@ -375,6 +387,10 @@ export default function TVPage({
   const [loading, setLoading] = useState(true);
   const [loadingSeason, setLoadingSeason] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [showSubtitleSearch, setShowSubtitleSearch] = useState(false);
+  const [showCastModal, setShowCastModal] = useState(false);
+  const [showPartyModal, setShowPartyModal] = useState(false);
   const [trailerKey, setTrailerKey] = useState(null);
   const [showTrailer, setShowTrailer] = useState(false);
   const [m3u8Url, setM3u8Url] = useState(null);
@@ -426,6 +442,15 @@ export default function TVPage({
   saveProgressRef.current = saveProgress;
   const onMarkWatchedRef = useRef(onMarkWatched);
   onMarkWatchedRef.current = onMarkWatched;
+  
+  const currentSeasonEpisodesRef = useRef([]);
+  const selectedEpRef = useRef(selectedEp);
+  selectedEpRef.current = selectedEp;
+  
+  const autoPlayNextRef = useRef(false);
+  useEffect(() => {
+    autoPlayNextRef.current = storage.get("autoPlayNextEpisode") !== false;
+  }, []);
 
   // Derived: detect anime before any effects so effects can use it
   const isAnime = useMemo(
@@ -464,6 +489,40 @@ export default function TVPage({
   const durationRef = useRef(0); // tracked for AniSkip progress bar markers
   const seekBackCooldownRef = useRef(0);
 
+  const toggleFullscreen = useCallback(() => {
+    setPlayerFullscreen((v) => !v);
+  }, []);
+
+  const injectSubtitle = useCallback((vttData, lang) => {
+    if (!webviewRef.current) return;
+    const code = `
+      (function() {
+        const video = document.querySelector('video');
+        if (!video) return false;
+        Array.from(video.querySelectorAll('track.streambert-track')).forEach(t => t.remove());
+        const track = document.createElement('track');
+        track.className = 'streambert-track';
+        track.kind = 'captions';
+        track.label = '${lang || "Custom"}';
+        track.srclang = '${lang || "unknown"}';
+        track.src = 'data:text/vtt;charset=utf-8,' + encodeURIComponent(\`${vttData.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
+        track.default = true;
+        video.appendChild(track);
+        if (video.textTracks && video.textTracks.length > 0) {
+          for (let i = 0; i < video.textTracks.length; i++) {
+            if (video.textTracks[i].label === '${lang || "Custom"}') {
+              video.textTracks[i].mode = 'showing';
+            } else {
+              video.textTracks[i].mode = 'hidden';
+            }
+          }
+        }
+        return true;
+      })();
+    `;
+    webviewRef.current.executeJavaScript(code).catch(e => console.error(e));
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -484,6 +543,13 @@ export default function TVPage({
       .finally(() => {
         if (mounted) setLoading(false);
       });
+
+    tmdbFetch(`/tv/${item.id}/credits`, apiKey)
+      .then((c) => {
+        if (mounted && c.cast) setCredits(c.cast.filter((p) => p.profile_path));
+      })
+      .catch(() => {});
+
     return () => {
       mounted = false;
     };
@@ -736,9 +802,11 @@ export default function TVPage({
     return () => window.electron.offSubtitleFound(handler);
   }, []);
 
-  const d = details || item;
+  const unpatchedD = details || item;
+  const d = useMetadata(unpatchedD);
   const title = d.name || d.title;
   const year = (d.first_air_date || "").slice(0, 4);
+  const isOverridePoster = d.overridePoster;
 
   // ── Season list: prefer episode-group > AniList > TMDB ──────────────────
   // tmdbSeasons excludes specials (season 0) (only for AniList)
@@ -848,11 +916,13 @@ export default function TVPage({
   const currentSeasonEpisodes = useMemo(() => {
     if (episodeGroupPending) return [];
     if (anilistLoading) return [];
-    return (
+    const eps = (
       episodeGroupCurrentEpisodes ||
       getSeasonEpisodes(seasonData?.episodes) ||
       []
     );
+    currentSeasonEpisodesRef.current = eps;
+    return eps;
   }, [
     episodeGroupPending,
     anilistLoading,
@@ -1014,6 +1084,20 @@ export default function TVPage({
   useEffect(() => {
     if (playing) setWebviewLoading(true);
   }, [playing]);
+
+  // ── Discord RPC ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (playing && selectedEp) {
+      window.electron.updateDiscordPresence({
+        details: `Watching ${title}`,
+        state: `S${selectedSeason} E${selectedEp.episode_number} - ${selectedEp.name}`,
+        startTimestamp: Date.now(),
+      });
+    } else {
+      window.electron.updateDiscordPresence(null);
+    }
+    return () => window.electron.updateDiscordPresence(null);
+  }, [playing, title, selectedSeason, selectedEp]);
 
   // ── Webview memory cleanup ────────────────────────────────────────────────
   // useLayoutEffect fires synchronously BEFORE React mutates the DOM, so the
@@ -1272,6 +1356,31 @@ export default function TVPage({
               autoMarkedRef.current = true;
               onMarkWatchedRef.current?.(currentProgressKey);
             }
+
+            // Auto-play Next Episode
+            if (
+              remaining <= 1 &&
+              remaining >= 0 &&
+              autoPlayNextRef.current &&
+              currentSeasonEpisodesRef.current &&
+              selectedEpRef.current
+            ) {
+              const currentEps = currentSeasonEpisodesRef.current;
+              const idx = currentEps.findIndex(
+                (e) => e.episode_number === selectedEpRef.current.episode_number
+              );
+              if (idx !== -1 && idx < currentEps.length - 1) {
+                const nextEp = currentEps[idx + 1];
+                // Prevent duplicate auto-play triggers
+                autoPlayNextRef.current = false;
+                setTimeout(() => { autoPlayNextRef.current = storage.get("autoPlayNextEpisode") !== false; }, 5000);
+                
+                // Signal to play the next episode
+                window.dispatchEvent(
+                  new CustomEvent("streambert:autoplay-next", { detail: nextEp })
+                );
+              }
+            }
           }
         } catch {}
       }, TICK);
@@ -1342,6 +1451,7 @@ export default function TVPage({
       setResolvingUrl(false);
       setResolveError(null);
       setSelectedEp(ep);
+      selectedEpRef.current = ep;
       setPlaying(true);
       onHistory({
         ...d,
@@ -1354,6 +1464,14 @@ export default function TVPage({
     },
     [d, selectedSeason, onHistory],
   );
+
+  useEffect(() => {
+    const handler = (e) => {
+      playEpisode(e.detail);
+    };
+    window.addEventListener("streambert:autoplay-next", handler);
+    return () => window.removeEventListener("streambert:autoplay-next", handler);
+  }, [playEpisode]);
 
   const handleSetDownloaderFolder = useCallback((folder) => {
     setDownloaderFolder(folder);
@@ -1435,8 +1553,20 @@ export default function TVPage({
             <div className="detail-gradient" />
             <div className="detail-content">
               <div className="detail-poster">
-                {d.poster_path ? (
-                  <img src={imgUrl(d.poster_path)} alt={title} loading="lazy" />
+                {isOverridePoster || d.poster_path ? (
+                  <img
+                    src={isOverridePoster ? d.poster_path : imgUrl(d.poster_path, "w500")}
+                    alt={title}
+                    className="poster-img"
+                    loading="lazy"
+                    onError={(e) => {
+                      if (!isOverridePoster) {
+                        e.target.src = imgUrl(d.poster_path, "w300");
+                      } else {
+                        e.target.style.display = "none";
+                      }
+                    }}
+                  />
                 ) : (
                   <div
                     style={{
@@ -1518,13 +1648,30 @@ export default function TVPage({
                         <TrailerIcon /> Trailer
                       </button>
                     ))}
-                  <button className="btn btn-secondary" onClick={onSave}>
-                    {isSaved ? <BookmarkFillIcon /> : <BookmarkIcon />}
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => onToggleFolderItem(item, "default")}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setShowPlaylistModal(true);
+                    }}
+                    title="Click to toggle Watchlist, Right-click for more folders"
+                  >
+                    {isSaved ? <BookmarkFillIcon /> : <BookmarkIcon />}{" "}
                     {isSaved ? "Saved" : "Save"}
                   </button>
                   <button className="btn btn-ghost" onClick={onBack}>
                     <BackIcon /> Back
                   </button>
+                  {onEditMetadata && (
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => onEditMetadata(d)}
+                      title="Edit Metadata"
+                    >
+                      ✎ Edit
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1750,6 +1897,35 @@ export default function TVPage({
                         {blockedSession}
                       </span>
                     )}
+                  </button>
+                  {/* Cast Button */}
+                  {m3u8Url && (
+                    <button
+                      className="player-overlay-btn"
+                      onClick={() => setShowCastModal(true)}
+                      title="Cast to TV"
+                    >
+                      <CastIcon size={18} />
+                    </button>
+                  )}
+                  {/* Watch Party Button */}
+                  <button
+                    className="player-overlay-btn"
+                    onClick={() => setShowPartyModal(true)}
+                    title="Watch Party"
+                  >
+                    <PartyIcon size={18} />
+                  </button>
+                  {/* Subtitles Search Button */}
+                  <button
+                    className="player-overlay-btn"
+                    onClick={() => {
+                      setShowSourceMenu(false);
+                      setShowSubtitleSearch(true);
+                    }}
+                    title="Search Subtitles"
+                  >
+                    CC
                   </button>
                   {/* Pop-out button */}
                   <button
@@ -2009,6 +2185,55 @@ export default function TVPage({
             </div>
           )}
 
+          {credits && credits.length > 0 && onSelect && (
+            <div className="section">
+              <div className="section-title">Cast</div>
+              <div className="scroll-row">
+                {credits.slice(0, 15).map((person) => (
+                  <div
+                    key={person.id}
+                    onClick={() => onSelect({ id: person.id, media_type: "person", name: person.name })}
+                    style={{
+                      width: 120,
+                      flexShrink: 0,
+                      cursor: "pointer",
+                      background: "var(--surface2)",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                      transition: "transform 0.2s, border-color 0.2s"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-4px)";
+                      e.currentTarget.style.borderColor = "var(--red)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "none";
+                      e.currentTarget.style.borderColor = "var(--border)";
+                    }}
+                  >
+                    <div style={{ width: 120, height: 180, overflow: "hidden" }}>
+                      <img
+                        src={imgUrl(person.profile_path, "w500")}
+                        alt={person.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        loading="lazy"
+                      />
+                    </div>
+                    <div style={{ padding: "8px 10px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {person.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {person.character}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="section">
             <div className="section-title">Episodes</div>
             {seasons.length > 0 && (
@@ -2167,6 +2392,33 @@ export default function TVPage({
           episode={selectedEp?.episode_number}
           posterPath={d.poster_path}
           tmdbId={item.id}
+        />
+      )}
+
+      {showSubtitleSearch && (
+        <SubtitleSearchModal
+          item={item}
+          season={selectedSeason}
+          episode={selectedEp?.episode_number}
+          onClose={() => setShowSubtitleSearch(false)}
+          onInjectSubtitle={injectSubtitle}
+        />
+      )}
+
+      {showCastModal && (
+        <CastModal
+          onClose={() => setShowCastModal(false)}
+          mediaUrl={m3u8Url}
+          title={title}
+          posterPath={d.poster_path}
+        />
+      )}
+
+      {showPartyModal && (
+        <WatchPartyModal
+          onClose={() => setShowPartyModal(false)}
+          webviewRef={webviewRef}
+          title={`${title} S${selectedSeason} E${selectedEp?.episode_number || ""}`}
         />
       )}
     </div>

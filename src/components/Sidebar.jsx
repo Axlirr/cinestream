@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { imgUrl } from "../utils/api";
 import {
-  StreambertLogo,
+  CINESTREAMLogo,
   HomeIcon,
   SearchIcon,
   HistoryIcon,
@@ -103,9 +103,9 @@ export default function Sidebar({
       <div
         className="sidebar-logo"
         onClick={() => onNavigate("home")}
-        title="Streambert"
+        title="CINESTREAM"
       >
-        <StreambertLogo />
+        <CINESTREAMLogo />
       </div>
 
       {canGoBack && (
@@ -132,6 +132,7 @@ export default function Sidebar({
         label="Downloads"
         badge={activeDownloads > 0 ? activeDownloads : null}
       />
+
 
       <div className="sidebar-sep" />
 
@@ -271,3 +272,4 @@ function SideBtn({ active, onClick, icon, label, badge }) {
     </button>
   );
 }
+

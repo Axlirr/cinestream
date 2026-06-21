@@ -321,6 +321,57 @@ function register({ getDownloads, saveDownloads }) {
     }
   });
 
+  // ── Get subtitle text contents ─────────────────────────────────────────────
+  ipcMain.handle("get-subtitle-text", async (_, { fileId }) => {
+    try {
+      if (String(fileId).startsWith("subdl_")) {
+        const parts = String(fileId).split("_");
+        const subdlPath = decodeURIComponent(parts.slice(2).join("_"));
+        const downloadUrl = `https://dl.subdl.com${subdlPath}`;
+        const res = await fetchWithTimeout(
+          downloadUrl,
+          { headers: { "User-Agent": "Streambert" } },
+          30000,
+        );
+        if (!res.ok)
+          return { ok: false, error: `SubDL download error ${res.status}` };
+        const zipBuffer = Buffer.from(await res.arrayBuffer());
+        const extracted = extractFirstSubtitleFromZip(zipBuffer);
+        if (!extracted)
+          return { ok: false, error: "No subtitle file found in SubDL ZIP" };
+        
+        return {
+          ok: true,
+          text: extracted.data.toString("utf8"),
+          fileName: extracted.name,
+        };
+      }
+
+      if (String(fileId).startsWith("wyzie_")) {
+        const url = decodeURIComponent(
+          String(fileId).split("_").slice(2).join("_"),
+        );
+        const res = await fetchWithTimeout(
+          url,
+          { headers: { "User-Agent": "Streambert" } },
+          30000,
+        );
+        if (!res.ok)
+          return { ok: false, error: `Wyzie download error ${res.status}` };
+        const text = await res.text();
+        return {
+          ok: true,
+          text,
+          fileName: "subtitle.srt",
+        };
+      }
+
+      return { ok: false, error: "Unknown subtitle source" };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   // ── Download subtitles for an already-completed file ──────────────────────
   ipcMain.handle(
     "download-subtitles-for-file",

@@ -10,11 +10,13 @@ export default function LibraryPage({
   history,
   inProgress,
   saved,
+  folders,
   progress,
   onSelect,
   watched,
   onMarkWatched,
   onMarkUnwatched,
+  onEditMetadata,
 }) {
   const allItems = useMemo(
     () => [...inProgress, ...saved],
@@ -77,6 +79,7 @@ export default function LibraryPage({
                   watched={watched}
                   onMarkWatched={onMarkWatched}
                   onMarkUnwatched={onMarkUnwatched}
+                  onEditMetadata={onEditMetadata}
                   ageRating={r.cert}
                   restricted={restr}
                 />
@@ -86,43 +89,53 @@ export default function LibraryPage({
         </div>
       )}
 
-      {saved.length > 0 && (
-        <div className="library-section">
-          <div className="library-section-title">
-            Watchlist ({saved.length})
-            {sort !== "manual" && (
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 400,
-                  color: "var(--text3)",
-                  marginLeft: 10,
-                }}
-              >
-                {sortLabels[sort]}
-              </span>
-            )}
+      {folders && folders.map(folder => {
+        const folderItems = saved.filter(item => {
+          if (!item.folderIds) return folder.id === "default";
+          return item.folderIds.includes(folder.id);
+        });
+        
+        if (folderItems.length === 0) return null;
+
+        return (
+          <div key={folder.id} className="library-section">
+            <div className="library-section-title">
+              {folder.name} ({folderItems.length})
+              {sort !== "manual" && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 400,
+                    color: "var(--text3)",
+                    marginLeft: 10,
+                  }}
+                >
+                  {sortLabels[sort]}
+                </span>
+              )}
+            </div>
+            <div className="cards-grid">
+              {folderItems.map((item) => {
+                const r = getRating(item);
+                const restr = itemRestricted(item);
+                return (
+                  <MediaCard
+                    key={`${item.media_type}_${item.id}`}
+                    item={item}
+                    onClick={() => onSelect(item)}
+                    watched={watched}
+                    onMarkWatched={onMarkWatched}
+                    onMarkUnwatched={onMarkUnwatched}
+                    onEditMetadata={onEditMetadata}
+                    ageRating={r.cert}
+                    restricted={restr}
+                  />
+                );
+              })}
+            </div>
           </div>
-          <div className="cards-grid">
-            {saved.map((item) => {
-              const r = getRating(item);
-              const restr = itemRestricted(item);
-              return (
-                <MediaCard
-                  key={`${item.media_type}_${item.id}`}
-                  item={item}
-                  onClick={() => onSelect(item)}
-                  watched={watched}
-                  onMarkWatched={onMarkWatched}
-                  onMarkUnwatched={onMarkUnwatched}
-                  ageRating={r.cert}
-                  restricted={restr}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
+        );
+      })}
 
       {history.length > 0 && (
         <div className="library-section">

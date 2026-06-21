@@ -66,7 +66,7 @@ export default function WindowTitlebar() {
           textOverflow: "ellipsis",
         }}
       >
-        STREAMBERT
+        CINESTREAM
       </div>
 
       {/* Window control buttons, NOT draggable */}
@@ -192,3 +192,4 @@ function TitlebarBtn({ children, onClick, hoverBg, title }) {
     </button>
   );
 }
+

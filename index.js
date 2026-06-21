@@ -1,4 +1,4 @@
-// -- Streambert main process entry point ---------------------------------------
+// -- CINESTREAM main process entry point ---------------------------------------
 // Responsible for: window creation, session setup, ad-blocking, scheduled
 // backup trigger, and app lifecycle. All heavy IPC logic lives in src/ipc/.
 
@@ -35,13 +35,15 @@ const _t0 = Date.now();
 const _bench = (label) =>
   console.log(`[boot] ${label}: +${Date.now() - _t0}ms`);
 
-// -- Sub-modules ---------------------------------------------------------------
 const blockStats = require("./src/ipc/blockStats");
 const storageIpc = require("./src/ipc/storage");
 const downloadsIpc = require("./src/ipc/downloads");
 const subtitlesIpc = require("./src/ipc/subtitles");
-const allmangaIpc = require("./src/ipc/allmanga");
+
 const playerIpc = require("./src/ipc/player");
+const discordIpc = require("./src/ipc/discord");
+const castIpc = require("./src/ipc/cast");
+const traktIpc = require("./src/ipc/trakt");
 
 // -- Ad/tracker block list -----------------------------------------------------
 const BLOCKED_HOSTS = [
@@ -105,21 +107,17 @@ const getMainWindow = () => mainWindow;
 const playerWcIds = new Set();
 let sessionsConfigured = false;
 
-function setupSession(playerSession, trailerSession) {
+function setupSession(playerSession, trailerSession, mangaSession) {
   const stripHeaders = (details, callback) => {
     const headers = { ...details.responseHeaders };
     for (const key of Object.keys(headers)) {
       const lower = key.toLowerCase();
-      if (lower === "x-frame-options" || lower === "content-security-policy")
+      if (lower === "x-frame-options" || lower === "content-security-policy" || lower === "access-control-allow-origin")
         delete headers[key];
     }
+    headers["access-control-allow-origin"] = ["*"];
     callback({ responseHeaders: headers });
   };
-
-  const UA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-  playerSession.setUserAgent(UA);
-  trailerSession.setUserAgent(UA);
 
   playerSession.webRequest.onHeadersReceived(
     { urls: ["*://*/*"] },
@@ -129,6 +127,20 @@ function setupSession(playerSession, trailerSession) {
     { urls: ["*://*/*"] },
     stripHeaders,
   );
+  if (mangaSession) {
+    mangaSession.webRequest.onHeadersReceived(
+      { urls: ["*://*/*"] },
+      stripHeaders,
+    );
+  }
+
+  const UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  playerSession.setUserAgent(UA);
+  trailerSession.setUserAgent(UA);
+  if (mangaSession) {
+    mangaSession.setUserAgent(UA);
+  }
 
   // Trailer: block ads only (no media intercept needed)
   trailerSession.webRequest.onBeforeRequest({ urls: BLOCKED_HOSTS }, (_, cb) =>
@@ -317,7 +329,9 @@ subtitlesIpc.register({
   getDownloads: downloadsIpc.getDownloads,
   saveDownloads: downloadsIpc.saveDownloads,
 });
-allmangaIpc.register();
+discordIpc.register();
+castIpc.register(getMainWindow);
+traktIpc.register(getMainWindow, storageIpc.secureStoreGet, storageIpc.secureStoreSet);
 playerIpc.register(getMainWindow, {
   writeSecretMigration: storageIpc.writeSecretMigration,
 });
@@ -601,3 +615,4 @@ if (!gotTheLock) {
     if (mainWindow === null) createWindow();
   });
 }
+

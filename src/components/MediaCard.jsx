@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { imgUrl, isAnimeContent } from "../utils/api";
+import { useMetadata } from "../utils/metadata";
 import {
   PlayIcon,
   FilmIcon,
@@ -12,48 +13,56 @@ import {
 const MediaCard = memo(function MediaCard({
   item,
   onClick,
+  onContextMenu,
   progress,
   watched,
   onMarkWatched,
   onMarkUnwatched,
+  onEditMetadata,
   ageRating,
   restricted,
 }) {
-  const title = item.title || item.name;
-  const year = (item.release_date || item.first_air_date || "").slice(0, 4);
-  const isTV = item.media_type === "tv";
-  const isAnime = isAnimeContent(item);
+  const patchedItem = useMetadata(item);
+
+  const title = patchedItem.title || patchedItem.name;
+  const release_date = patchedItem.release_date || patchedItem.first_air_date || "";
+  const year = release_date.slice(0, 4);
+  const isTV = patchedItem.media_type === "tv";
+  const isAnime = isAnimeContent(patchedItem);
+  const isOverridePoster = patchedItem.overridePoster;
 
   // Unreleased detection
-  const rawDate = item.release_date || item.first_air_date;
+  const rawDate = release_date;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const isUnreleased = rawDate ? new Date(rawDate) > today : false;
 
   // Build watched key for TV cards from Continue Watching we get season/episode
   const watchedKey = isTV
-    ? item.season != null && item.episode != null
-      ? `tv_${item.id}_s${item.season}e${item.episode}`
-      : `tv_${item.id}`
-    : `movie_${item.id}`;
+    ? patchedItem.season != null && patchedItem.episode != null
+      ? `tv_${patchedItem.id}_s${patchedItem.season}e${patchedItem.episode}`
+      : `tv_${patchedItem.id}`
+    : `movie_${patchedItem.id}`;
 
   const isWatched = !!watched?.[watchedKey];
 
   // Context menu state
   const [menu, setMenu] = useState(null); // { x, y }
-  const menuRef = useRef(null);
 
   // For TV series cards without a specific episode, watched marking is disabled
-  const canMarkWatched = !isTV || (item.season != null && item.episode != null);
+  const canMarkWatched = !isTV || (patchedItem.season != null && patchedItem.episode != null);
 
   const openMenu = useCallback(
     (e) => {
-      if (!canMarkWatched) return; // no context menu for whole series
       e.preventDefault();
       e.stopPropagation();
-      setMenu({ x: e.clientX, y: e.clientY });
+      if (onContextMenu) {
+        onContextMenu(patchedItem, { x: e.clientX, y: e.clientY });
+      } else {
+        setMenu({ x: e.clientX, y: e.clientY });
+      }
     },
-    [canMarkWatched],
+    [patchedItem, onContextMenu],
   );
 
   useEffect(() => {
@@ -82,15 +91,18 @@ const MediaCard = memo(function MediaCard({
     <>
       <div
         className={`card${isWatched ? " ep-watched" : ""}${isUnreleased ? " card--unreleased" : ""}`}
-        onClick={onClick}
+        onClick={() => !isUnreleased && onClick(patchedItem)}
         onContextMenu={isUnreleased ? undefined : openMenu}
       >
         <div className="card-poster">
-          {item.poster_path ? (
+          {patchedItem.poster_path ? (
             <img
-              src={imgUrl(item.poster_path, "w342")}
+              src={isOverridePoster ? patchedItem.poster_path : imgUrl(patchedItem.poster_path, "w342")}
               alt={title}
               loading="lazy"
+              onError={(e) => {
+                if (!isOverridePoster) e.target.src = imgUrl(patchedItem.poster_path, "w300");
+              }}
             />
           ) : (
             <div className="no-poster">
@@ -160,13 +172,18 @@ const MediaCard = memo(function MediaCard({
           style={{ top: menu.y, left: menu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          {isWatched ? (
+          {canMarkWatched && isWatched ? (
             <button className="context-menu-item" onClick={handleMarkUnwatched}>
               ↩ Mark as Unwatched
             </button>
-          ) : (
+          ) : canMarkWatched ? (
             <button className="context-menu-item" onClick={handleMarkWatched}>
               ✓ Mark as Watched
+            </button>
+          ) : null}
+          {onEditMetadata && (
+            <button className="context-menu-item" onClick={(e) => { e.stopPropagation(); onEditMetadata(patchedItem); setMenu(null); }}>
+              ✎ Edit Metadata
             </button>
           )}
         </div>
