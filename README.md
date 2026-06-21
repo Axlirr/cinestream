@@ -3,7 +3,7 @@
 
 # CineStream
 A cross-platform Electron Desktop App to stream and download any Movie, TV Series or Anime in the World. Zero Ads and Tracking <br></br>
-![Logo](public/logo.png)
+<img src="public/logo.png" width="150" alt="Logo">
 
 ## 🙏 Credits & Acknowledgements
 **CineStream** is a hard-fork and continuation of the original **[Streambert](https://github.com/truelockmc/streambert)** project created by **[truelockmc](https://github.com/truelockmc)**. Full credit goes to the original author for the incredible foundation. 
