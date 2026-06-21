@@ -23,6 +23,8 @@ CineStream improves upon the original foundation with a completely rewritten, an
 ## Features
 - 🎦 **Streaming:** Stream any Movie, Anime or TV Series from around the World.
 - 📥 **Downloading:** Advanced Cloudflare-bypassing download engine.
+- 🍿 **Watch Parties:** Host watch parties to stream perfectly in sync with your friends.
+- 🎭 **Cast & Actor Info:** Explore full cast lists, actor biographies, and filmographies directly in the app.
 - 📃 **Subtitles:** Download and manage Subtitles.
 - ⚙️ **Customizability:** Customize the Interface and Features to your unique needs.
 - 📚 **Library:** Track what you watched, save stuff you want to watch and manage your Downloads.
