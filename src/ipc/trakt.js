@@ -57,7 +57,16 @@ function register(getMainWindow, secureGet, secureSet) {
       
       // Start polling
       if (pollingInterval) clearInterval(pollingInterval);
+      // Trakt device codes expire (data.expires_in seconds). Stop polling once
+      // that window passes so an abandoned auth attempt doesn't poll forever.
+      const pollDeadline =
+        Date.now() + (Number(data.expires_in) || 600) * 1000;
       pollingInterval = setInterval(async () => {
+        if (Date.now() > pollDeadline) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+          return;
+        }
         try {
           const tokenRes = await fetch("https://api.trakt.tv/oauth/device/token", {
             method: "POST",
@@ -71,6 +80,7 @@ function register(getMainWindow, secureGet, secureSet) {
           if (tokenRes.ok) {
             const tokenData = await tokenRes.json();
             clearInterval(pollingInterval);
+            pollingInterval = null;
             await secureSet("traktAccessToken", tokenData.access_token);
             await secureSet("traktRefreshToken", tokenData.refresh_token);
             traktConfig.accessToken = tokenData.access_token;
@@ -81,9 +91,11 @@ function register(getMainWindow, secureGet, secureSet) {
           } else if (tokenRes.status !== 400) {
             // 400 means pending. other errors mean expired/denied
             clearInterval(pollingInterval);
+            pollingInterval = null;
           }
         } catch (e) {
           clearInterval(pollingInterval);
+          pollingInterval = null;
         }
       }, data.interval * 1000);
 
