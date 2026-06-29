@@ -31,6 +31,7 @@ const ActorPage = lazy(() => import("./pages/ActorPage"));
 const LibraryPage = lazy(() => import("./pages/LibraryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const DownloadsPage = lazy(() => import("./pages/DownloadsPage"));
+const LiveTVPage = lazy(() => import("./pages/LiveTVPage"));
 import { checkForUpdates } from "./utils/updates";
 
 export default function App() {
@@ -948,6 +949,7 @@ export default function App() {
                 apiKey={apiKey}
               />
             )}
+            {page === "livetv" && <LiveTVPage />}
             {page === "movie" && selected && (
               <MoviePage
                 item={selected}
