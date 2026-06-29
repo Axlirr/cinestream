@@ -846,7 +846,20 @@ function register(getMainWindow) {
   });
 
   ipcMain.handle("open-external", (_, url) => {
-    shell.openExternal(url);
+    // Only allow http(s) and mailto. Streaming-site content can feed arbitrary
+    // strings here; without this guard a "file://", "javascript:" or custom
+    // protocol-handler URL could be passed straight to the OS.
+    try {
+      const parsed = new URL(String(url));
+      const allowed = ["http:", "https:", "mailto:"];
+      if (!allowed.includes(parsed.protocol)) {
+        return { ok: false, error: "Blocked protocol" };
+      }
+      shell.openExternal(parsed.href);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Invalid URL" };
+    }
   });
   ipcMain.handle("open-path", (_, filePath) => {
     // If the path points to a file (e.g. an .asar archive or an executable),
@@ -1004,4 +1017,3 @@ module.exports = {
   killAllDownloads,
   getDownloads: () => downloads,
 };
-
