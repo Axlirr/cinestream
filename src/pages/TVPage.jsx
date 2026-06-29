@@ -495,6 +495,9 @@ export default function TVPage({
 
   const injectSubtitle = useCallback((vttData, lang) => {
     if (!webviewRef.current) return;
+    // lang comes from external subtitle providers; strip anything that could
+    // break out of the single-quoted JS string literals below.
+    const safeLang = String(lang || "Custom").replace(/[^a-zA-Z0-9 _-]/g, "");
     const code = `
       (function() {
         const video = document.querySelector('video');
@@ -503,14 +506,14 @@ export default function TVPage({
         const track = document.createElement('track');
         track.className = 'streambert-track';
         track.kind = 'captions';
-        track.label = '${lang || "Custom"}';
-        track.srclang = '${lang || "unknown"}';
+        track.label = '${safeLang}';
+        track.srclang = '${safeLang}';
         track.src = 'data:text/vtt;charset=utf-8,' + encodeURIComponent(\`${vttData.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
         track.default = true;
         video.appendChild(track);
         if (video.textTracks && video.textTracks.length > 0) {
           for (let i = 0; i < video.textTracks.length; i++) {
-            if (video.textTracks[i].label === '${lang || "Custom"}') {
+            if (video.textTracks[i].label === '${safeLang}') {
               video.textTracks[i].mode = 'showing';
             } else {
               video.textTracks[i].mode = 'hidden';
