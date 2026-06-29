@@ -107,16 +107,23 @@ export default function WatchPartyModal({ onClose, webviewRef, title }) {
         globalConns = [conn];
         
         conn.on("data", (data) => {
-          if (data.type === "sync" && webviewRef.current) {
+          if (data && data.type === "sync" && webviewRef.current) {
+            // data comes from a remote peer over the network and is injected
+            // into executeJavaScript below, so it MUST be validated. A hostile
+            // peer could otherwise send a string that breaks out of the
+            // expression and runs arbitrary code in the player webview.
+            const time = Number(data.time);
+            if (!Number.isFinite(time) || time < 0) return;
+            const isPlaying = data.playing === true;
             webviewRef.current.executeJavaScript(`
               (function() {
                 var v = document.querySelector('video');
                 if (v) {
-                  if (Math.abs(v.currentTime - ${data.time}) > 2) {
-                    v.currentTime = ${data.time};
+                  if (Math.abs(v.currentTime - ${time}) > 2) {
+                    v.currentTime = ${time};
                   }
-                  if (${data.playing} && v.paused) v.play().catch(e=>{});
-                  else if (!${data.playing} && !v.paused) v.pause();
+                  if (${isPlaying} && v.paused) v.play().catch(e=>{});
+                  else if (${!isPlaying} && !v.paused) v.pause();
                 }
               })();
             `).catch(() => {});
