@@ -2,6 +2,10 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; img-src 'self' https://image.tmdb.org data:; connect-src 'self' https://api.themoviedb.org https://graphql.anilist.co https://sub.wyzie.io https://api.github.com; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self' blob: data:; object-src 'none'; frame-src *"
+        />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>CINESTREAM</title>
         <link rel="icon" type="image/svg+xml" href="/logo.png" />
@@ -11,5 +15,3 @@
         <script type="module" src="/src/main.jsx"></script>
     </body>
 </html>
-
-
