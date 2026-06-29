@@ -44,6 +44,7 @@ const playerIpc = require("./src/ipc/player");
 const discordIpc = require("./src/ipc/discord");
 const castIpc = require("./src/ipc/cast");
 const traktIpc = require("./src/ipc/trakt");
+const livetvIpc = require("./src/ipc/livetv");
 
 // -- Ad/tracker block list -----------------------------------------------------
 const BLOCKED_HOSTS = [
@@ -332,6 +333,7 @@ subtitlesIpc.register({
 discordIpc.register();
 castIpc.register(getMainWindow);
 traktIpc.register(getMainWindow, storageIpc.secureStoreGet, storageIpc.secureStoreSet);
+livetvIpc.register();
 playerIpc.register(getMainWindow, {
   writeSecretMigration: storageIpc.writeSecretMigration,
 });
@@ -615,4 +617,3 @@ if (!gotTheLock) {
     if (mainWindow === null) createWindow();
   });
 }
-
