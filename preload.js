@@ -87,6 +87,13 @@ contextBridge.exposeInMainWorld("electron", {
   setPlayerVideo: (args) => ipcRenderer.invoke("set-player-video", args),
   debugAllManga: (args) => ipcRenderer.invoke("debug-allmanga", args),
 
+  // Live TV (IPTV M3U)
+  livetvGetPlaylists: () => ipcRenderer.invoke("livetv-get-playlists"),
+  livetvLoad: (args) => ipcRenderer.invoke("livetv-load", args),
+  livetvCheckChannel: (args) => ipcRenderer.invoke("livetv-check-channel", args),
+  livetvCheckBatch: (args) => ipcRenderer.invoke("livetv-check-batch", args),
+  livetvClearCache: () => ipcRenderer.invoke("livetv-clear-cache"),
+
   // App version (from package.json via Electron)
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
 
