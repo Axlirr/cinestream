@@ -6,6 +6,7 @@ import {
   SearchIcon,
   HistoryIcon,
   FilmIcon,
+  TVIcon,
   SettingsIcon,
   DownloadsQueueIcon,
   QuitIcon,
@@ -118,6 +119,12 @@ export default function Sidebar({
         onClick={() => onNavigate("home")}
         icon={<HomeIcon />}
         label="Home"
+      />
+      <SideBtn
+        active={page === "livetv"}
+        onClick={() => onNavigate("livetv")}
+        icon={<TVIcon />}
+        label="Live TV"
       />
       <SideBtn
         active={page === "history"}
@@ -272,4 +279,3 @@ function SideBtn({ active, onClick, icon, label, badge }) {
     </button>
   );
 }
-
