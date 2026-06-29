@@ -430,6 +430,10 @@ export default function MoviePage({
 
   const injectSubtitle = useCallback((vttData, lang) => {
     if (!webviewRef.current) return;
+    // lang comes from external subtitle providers and is interpolated into the
+    // injected script's string literals below, so strip anything that could
+    // break out of a single-quoted JS string.
+    const safeLang = String(lang || "Custom").replace(/[^a-zA-Z0-9 _-]/g, "");
     const code = `
       (function() {
         const video = document.querySelector('video');
@@ -441,8 +445,8 @@ export default function MoviePage({
         const track = document.createElement('track');
         track.className = 'streambert-track';
         track.kind = 'captions';
-        track.label = '${lang || "Custom"}';
-        track.srclang = '${lang || "unknown"}';
+        track.label = '${safeLang}';
+        track.srclang = '${safeLang}';
         track.src = 'data:text/vtt;charset=utf-8,' + encodeURIComponent(\`${vttData.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`);
         track.default = true;
         video.appendChild(track);
@@ -450,7 +454,7 @@ export default function MoviePage({
         // Try to enable it immediately
         if (video.textTracks && video.textTracks.length > 0) {
           for (let i = 0; i < video.textTracks.length; i++) {
-            if (video.textTracks[i].label === '${lang || "Custom"}') {
+            if (video.textTracks[i].label === '${safeLang}') {
               video.textTracks[i].mode = 'showing';
             } else {
               video.textTracks[i].mode = 'hidden';
